@@ -3,197 +3,212 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>생명과학 I 성찰 기록장 (설문형)</title>
-    <!-- Tailwind CSS -->
+    <title>생명과학 I 심층 성찰 기록장</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;800&display=swap');
         body { font-family: 'Pretendard', sans-serif; }
-        .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        #root { min-height: 100vh; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
     </style>
 </head>
-<body class="bg-slate-100">
+<body class="bg-slate-50">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- 선생님 설정값 ---
-        const GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbx49Gxz0TmTDhSPWP_qpMLvRLUspXAUIV_GpJUBZ6o11kh4sGiZNqA2h_2JLEoWtj4i/exec"; 
-        
-        // 고정 질문 리스트 (세특 작성을 위한 핵심 질문들)
-        const QUESTIONS = [
-            "올해 생명과학 I 수업에서 가장 흥미로웠던 단원이나 주제는 무엇인가요? (예: 유전, 항상성, 생태계 등)",
-            "그 주제를 배우면서 새롭게 알게 된 사실이나 더 깊이 탐구해보고 싶었던 내용은 무엇이었나요?",
-            "수업 시간 중 수행평가나 탐구 활동에서 본인이 주도적으로 기여한 부분은 무엇인가요? (실험 설계, 자료 조사, 발표 등)",
-            "어려운 개념을 이해하기 위해 본인만의 노력(관련 서적 읽기, 문제 풀이, 친구와 토론 등)을 기울인 사례가 있다면 구체적으로 적어주세요.",
-            "생명과학 지식을 실생활이나 자신의 진로(의학, 생명공학, 환경 등)와 연결 지어 고민해본 적이 있나요?",
-            "마지막으로 한 학기 동안 수업에 참여하며 느낀 소감이나 본인의 성장에 대해 자유롭게 들려주세요."
-        ];
-        // -------------------
+        // --- 선생님 설정값 (구글 앱스 스크립트 URL) ---
+        const GOOGLE_SHEET_URL = ""; 
 
-        const Icon = ({ name, size = 24, className = "" }) => {
-            const icons = {
-                "clipboard-list": <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2m4-2v4m-4 0h8m-5 8h4m-4 4h4" />,
-                "graduation-cap": <path d="M22 10v6M2 10l10-5 10 5-10 5zM6 12v5c3 3 9 3 12 0v-5" />,
-                "send": <path d="m22 2-7 20-4-9-9-4Z M22 2l-11 11" />,
-                "check-circle": <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" />,
-            };
-            return (
-                <svg 
-                    width={size} 
-                    height={size} 
-                    viewBox="0 0 24 24" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="2" 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    className={className}
-                >
-                    {icons[name] || null}
-                </svg>
-            );
+        const UNIT_DATA = {
+            "1": { name: "1. 생명 과학의 이해", standards: ["A. 생명 과학의 통합적 특성과 타 학문 연계성", "B. 연역적 탐구 방법 등 다양한 탐구 방법 비교", "C. 생물의 특성과 생물/비생물 차이"] },
+            "2": { name: "2. 사람의 물질대사", standards: ["A. 물질대사와 ATP, 소화/호흡/순환 관련성", "B. 세포 호흡 결과 노폐물 배설 과정", "C. 대사성 질환 조사 및 생활 습관 토의"] },
+            "3": { name: "3. 항상성과 건강", standards: ["A. 흥분 전도와 전달 및 약물의 영향", "B. 근섬유 구조와 근수축 활주설", "C. 신경계 구조/기능 및 관련 질환", "D. 호르몬 특성과 과잉/결핍 질환", "E. 항상성 유지 조절 과정", "F. 방어 작용과 백신의 원리"] },
+            "4": { name: "4. 유전", standards: ["A. 염색체, DNA, 유전자와 세포 분열", "B. 생식 세포 형성과 유전적 다양성", "C. 가계도 분석(상/성염색체 구분)", "D. 염색체/유전자 이상 유전병"] },
+            "5": { name: "5. 생태계와 상호 작용", standards: ["A. 생태계 구성 요소와 상호 작용", "B. 군집 조사(우점종)와 천이 과정", "C. 에너지 흐름과 물질 순환", "D. 생물다양성 의미와 보전 방안"] }
         };
 
         const App = () => {
-            const [step, setStep] = useState('info'); 
-            const [studentInfo, setStudentInfo] = useState({ name: '', studentId: '' });
+            const [step, setStep] = useState('info');
+            const [studentInfo, setStudentInfo] = useState({ name: '', studentId: '', studentClass: '' });
             const [messages, setMessages] = useState([]);
             const [inputText, setInputText] = useState('');
-            const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
             const [isSaving, setIsSaving] = useState(false);
+            
+            const [selectedUnits, setSelectedUnits] = useState([]); 
+            const [currentPhase, setCurrentPhase] = useState('SELECT_UNIT_1'); 
+
             const scrollRef = useRef(null);
+            useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages]);
 
-            useEffect(() => {
-                if (scrollRef.current) {
-                    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-                }
-            }, [messages]);
+            const addBotMessage = (text) => setMessages(prev => [...prev, { role: 'bot', text }]);
 
-            const startChat = () => {
-                if (!studentInfo.name.trim() || !studentInfo.studentId.trim()) return;
+            const startSurvey = () => {
+                if (!studentInfo.name || !studentInfo.studentId || !studentInfo.studentClass) return;
                 setStep('chat');
-                setMessages([{ role: 'bot', text: `반가워, ${studentInfo.name} 학생! 생기부 작성을 위한 몇 가지 질문을 할게. 솔직하고 구체적으로 답해줘.\n\nQ1. ${QUESTIONS[0]}` }]);
+                addBotMessage(`반가워, ${studentInfo.studentClass}반 ${studentInfo.name} 학생!\n\n먼저 **첫 번째로 가장 흥미로웠던 대단원**을 번호(1~5)로 골라줘.\n\n1. 생명 과학의 이해\n2. 사람의 물질대사\n3. 항상성과 건강\n4. 유전\n5. 생태계와 상호 작용`);
             };
 
             const handleSendMessage = async () => {
                 if (!inputText.trim() || isSaving) return;
-
-                const userResponse = inputText;
-                const newMessages = [...messages, { role: 'user', text: userResponse }];
-                setMessages(newMessages);
+                const input = inputText.trim();
+                const newHistory = [...messages, { role: 'user', text: input }];
+                setMessages(newHistory);
                 setInputText('');
 
-                const nextIdx = currentQuestionIdx + 1;
-                
-                if (nextIdx < QUESTIONS.length) {
-                    // 다음 질문 제시
-                    setMessages(prev => [...prev, { role: 'bot', text: `Q${nextIdx + 1}. ${QUESTIONS[nextIdx]}` }]);
-                    setCurrentQuestionIdx(nextIdx);
-                } else {
-                    // 모든 질문 완료
+                if (currentPhase === 'SELECT_UNIT_1') {
+                    const num = input.match(/[1-5]/)?.[0];
+                    if (num) {
+                        setSelectedUnits([num]);
+                        setCurrentPhase('SELECT_DETAIL_1');
+                        addBotMessage(`**[${UNIT_DATA[num].name}]** 단원에서 특별히 관심 있었던 세부 내용을 하나 골라봐.\n\n${UNIT_DATA[num].standards.join('\n')}\n\n(A, B, C 등 알파벳 입력)`);
+                    } else addBotMessage("1~5 사이 숫자를 입력해 줘.");
+                } 
+                else if (currentPhase === 'SELECT_DETAIL_1') {
+                    if (/[A-F]/.test(input.toUpperCase())) {
+                        setCurrentPhase('QUESTION_1_1');
+                        addBotMessage(`선택한 주제와 관련해 수업 외에 스스로 더 탐구하거나 새롭게 깨닫게 된 내용은 뭐야?`);
+                    } else addBotMessage("알파벳 중 하나를 선택해 줘.");
+                }
+                else if (currentPhase === 'QUESTION_1_1') {
+                    setCurrentPhase('QUESTION_1_2');
+                    addBotMessage(`탐구 과정에서 어려웠던 점과 이를 해결하기 위한 노력은 무엇이었니?`);
+                }
+                else if (currentPhase === 'QUESTION_1_2') {
+                    setCurrentPhase('SELECT_UNIT_2');
+                    // 첫 번째 선택 단원 제외하고 목록 구성
+                    const remainingUnits = Object.keys(UNIT_DATA).filter(k => k !== selectedUnits[0]);
+                    const unitList = remainingUnits.map(k => `${k}. ${UNIT_DATA[k].name}`).join('\n');
+                    addBotMessage(`첫 번째 기록 완료! 이제 **두 번째로 흥미로웠던 단원**을 골라줘. (이전 선택 제외)\n\n${unitList}`);
+                }
+                else if (currentPhase === 'SELECT_UNIT_2') {
+                    const num = input.match(/[1-5]/)?.[0];
+                    if (num && num !== selectedUnits[0]) {
+                        setSelectedUnits([...selectedUnits, num]);
+                        setCurrentPhase('SELECT_DETAIL_2');
+                        addBotMessage(`**[${UNIT_DATA[num].name}]** 단원이야. 세부 내용을 골라볼까?\n\n${UNIT_DATA[num].standards.join('\n')}`);
+                    } else addBotMessage(`이전 단원(${selectedUnits[0]}번)을 제외한 유효한 번호를 입력해 줘.`);
+                }
+                else if (currentPhase === 'SELECT_DETAIL_2') {
+                    if (/[A-F]/.test(input.toUpperCase())) {
+                        setCurrentPhase('QUESTION_2_1');
+                        addBotMessage(`이 주제가 본인의 진로나 일상생활 문제 해결에 어떤 도움이 된다고 생각하니?`);
+                    } else addBotMessage("알파벳을 정확히 입력해 줘.");
+                }
+                else if (currentPhase === 'QUESTION_2_1') {
+                    setCurrentPhase('FINAL_COMMON');
+                    addBotMessage(`마지막 질문! 1년 동안 생명과학 수업을 통해 스스로 가장 성장했다고 느끼는 순간은?`);
+                }
+                else if (currentPhase === 'FINAL_COMMON') {
                     setIsSaving(true);
-                    setMessages(prev => [...prev, { role: 'bot', text: "모든 답변을 확인했어! 이제 선생님의 구글 시트로 전송할게. 잠시만 기다려줘..." }]);
-                    await saveToSheet(newMessages);
-                    setTimeout(() => setStep('completed'), 2000);
+                    addBotMessage("정성스러운 답변 고마워! 이제 선생님께 전송할게.");
+                    await saveToSheet(newHistory);
+                    setStep('completed');
+                    setIsSaving(false);
                 }
             };
 
-            const saveToSheet = async (finalMessages) => {
+            const saveToSheet = async (history) => {
                 if (!GOOGLE_SHEET_URL) return;
-
-                // 질문과 답변을 매칭하여 저장
-                const conversationText = finalMessages
-                    .filter(m => m.role === 'user')
-                    .map((m, i) => `질문${i+1}: ${QUESTIONS[i]}\n답변: ${m.text}`)
-                    .join('\n\n');
-
-                const formData = new URLSearchParams();
-                formData.append('name', studentInfo.name);
-                formData.append('studentId', studentInfo.studentId);
-                formData.append('content', conversationText);
-                formData.append('date', new Date().toLocaleString('ko-KR'));
-
+                const summary = history.map(m => `${m.role === 'user' ? '학생' : '질문'}: ${m.text}`).join('\n\n');
+                const params = new URLSearchParams();
+                params.append('name', studentInfo.name);
+                params.append('studentId', studentInfo.studentId);
+                params.append('studentClass', studentInfo.studentClass);
+                params.append('content', summary);
+                params.append('date', new Date().toLocaleString('ko-KR'));
                 try {
-                    await fetch(GOOGLE_SHEET_URL, {
-                        method: 'POST',
-                        mode: 'no-cors', 
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: formData.toString()
-                    });
-                } catch (e) { 
-                    console.error("Sheet Error", e); 
-                }
+                    await fetch(GOOGLE_SHEET_URL, { method: 'POST', mode: 'no-cors', body: params.toString() });
+                } catch (e) { console.error(e); }
             };
 
             return (
-                <div className="min-h-screen flex items-center justify-center p-4">
-                    <div className="w-full max-w-xl bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col h-[85vh] border border-slate-200">
-                        {/* Header */}
-                        <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-6 text-white flex items-center justify-between shadow-lg z-10">
-                            <div className="flex items-center gap-3">
-                                <div className="bg-white/20 p-2 rounded-xl"><Icon name="clipboard-list" /></div>
-                                <div>
-                                    <h1 className="font-bold text-lg leading-tight">생명과학 I 성찰 기록장</h1>
-                                    <p className="text-[10px] opacity-80 font-medium">선생님 확인용 설문 가이드</p>
-                                </div>
-                            </div>
-                            <div className="text-[10px] bg-black/20 px-3 py-1 rounded-full font-bold">
-                                질문 {Math.min(currentQuestionIdx + 1, QUESTIONS.length)} / {QUESTIONS.length}
-                            </div>
+                <div className="flex justify-center items-center min-h-screen p-4 bg-slate-100">
+                    <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl flex flex-col h-[85vh] overflow-hidden border border-slate-200">
+                        <div className="bg-indigo-600 p-5 text-white shadow-md">
+                            <h1 className="font-extrabold text-lg flex items-center gap-2">🧬 생명과학 I 성찰 가이드</h1>
+                            <p className="text-[10px] opacity-70 font-medium">성취기준 기반 맞춤형 질문 답변 시스템</p>
                         </div>
 
-                        {/* Content Area */}
-                        <div className="flex-1 overflow-hidden flex flex-col relative bg-slate-50">
-                            {step === 'info' && (
-                                <div className="p-8 flex flex-col items-center justify-center h-full text-center space-y-6 animate-fade-in">
-                                    <div className="w-20 h-20 bg-emerald-50 rounded-3xl flex items-center justify-center text-emerald-600 rotate-6 shadow-sm"><Icon name="graduation-cap" size={40} /></div>
-                                    <div>
-                                        <h2 className="text-xl font-extrabold text-slate-800 leading-tight">학생의 성장을 기록합니다.</h2>
-                                        <p className="text-sm text-slate-500 mt-2">이름과 학번을 입력하면 설문이 시작됩니다.</p>
-                                    </div>
+                        <div className="flex-1 overflow-hidden flex flex-col bg-slate-50">
+                            {step === 'info' ? (
+                                <div className="p-8 flex flex-col items-center justify-center h-full space-y-4 animate-fade-in text-center">
+                                    <div className="text-4xl mb-2">🎓</div>
+                                    <h2 className="text-xl font-bold text-slate-800">기록 시작하기</h2>
                                     <div className="w-full max-w-sm space-y-3">
                                         <div className="flex gap-2">
-                                            <input type="text" placeholder="이름" className="w-1/3 p-4 bg-white border-2 border-slate-100 rounded-xl text-center font-bold outline-none focus:border-emerald-500 shadow-sm" value={studentInfo.name} onChange={e => setStudentInfo({...studentInfo, name: e.target.value})} />
-                                            <input type="text" placeholder="학번" className="w-2/3 p-4 bg-white border-2 border-slate-100 rounded-xl text-center font-bold outline-none focus:border-emerald-500 shadow-sm" value={studentInfo.studentId} onChange={e => setStudentInfo({...studentInfo, studentId: e.target.value})} />
+                                            <input 
+                                                type="text" 
+                                                placeholder="반 (예: A, B, C)" 
+                                                className="w-1/3 p-4 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 text-center font-bold" 
+                                                value={studentInfo.studentClass} 
+                                                onChange={e => setStudentInfo({...studentInfo, studentClass: e.target.value})} 
+                                            />
+                                            <input 
+                                                type="text" 
+                                                placeholder="학번 (예: 20401)" 
+                                                className="w-2/3 p-4 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 text-center font-bold" 
+                                                value={studentInfo.studentId} 
+                                                onChange={e => setStudentInfo({...studentInfo, studentId: e.target.value})} 
+                                            />
                                         </div>
-                                        <button onClick={startChat} className="w-full py-4 bg-emerald-600 text-white font-bold rounded-xl shadow-lg active:scale-95 transition-all hover:bg-emerald-700">설문 시작하기</button>
+                                        <input 
+                                            type="text" 
+                                            placeholder="이름" 
+                                            className="w-full p-4 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 text-center font-bold" 
+                                            value={studentInfo.name} 
+                                            onChange={e => setStudentInfo({...studentInfo, name: e.target.value})} 
+                                        />
+                                        <button 
+                                            onClick={startSurvey} 
+                                            disabled={!studentInfo.name || !studentInfo.studentId || !studentInfo.studentClass} 
+                                            className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg hover:bg-indigo-700 disabled:bg-slate-300 transition-all mt-2"
+                                        >
+                                            대화 시작
+                                        </button>
                                     </div>
                                 </div>
-                            )}
-
-                            {step === 'chat' && (
+                            ) : step === 'chat' ? (
                                 <>
-                                    <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6">
-                                        {messages.map((msg, idx) => (
-                                            <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}>
-                                                <div className={`max-w-[85%] px-5 py-3 rounded-2xl text-[14px] leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-emerald-600 text-white rounded-tr-none' : 'bg-white text-slate-700 rounded-tl-none border border-slate-200'}`}>
-                                                    {msg.text.split('\n').map((line, i) => <p key={i} className="mb-1">{line}</p>)}
+                                    <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                                        {messages.map((msg, i) => (
+                                            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                                <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm shadow-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none'}`}>
+                                                    {msg.text}
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
-                                    <div className="p-4 bg-white border-t flex gap-2 items-end shadow-[0_-4px_10px_rgba(0,0,0,0.03)]">
-                                        <textarea rows="3" className="flex-1 bg-slate-50 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-emerald-500 resize-none font-medium border border-slate-200" value={inputText} onChange={e => setInputText(e.target.value)} placeholder="질문에 대한 답변을 입력하세요..." onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} />
-                                        <button onClick={handleSendMessage} disabled={!inputText.trim() || isSaving} className="p-4 bg-emerald-600 text-white rounded-2xl shadow-md disabled:bg-slate-300 active:scale-90 transition-all flex items-center justify-center h-[52px] w-[52px]"><Icon name="send" size={20} /></button>
+                                    <div className="p-4 bg-white border-t flex gap-2">
+                                        <textarea 
+                                            rows="2" 
+                                            className="flex-1 bg-slate-100 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 resize-none border-none" 
+                                            value={inputText} 
+                                            onChange={e => setInputText(e.target.value)} 
+                                            placeholder="메시지를 입력하세요..." 
+                                            onKeyDown={e => {if(e.key==='Enter' && !e.shiftKey){e.preventDefault(); handleSendMessage();}}} 
+                                        />
+                                        <button 
+                                            onClick={handleSendMessage} 
+                                            disabled={!inputText.trim() || isSaving} 
+                                            className="px-4 bg-indigo-600 text-white rounded-xl font-bold disabled:bg-slate-300 transition-all shadow-md"
+                                        >
+                                            전송
+                                        </button>
                                     </div>
                                 </>
-                            )}
-
-                            {step === 'completed' && (
-                                <div className="p-8 flex flex-col items-center justify-center h-full text-center space-y-4 animate-fade-in">
-                                    <div className="w-20 h-20 bg-green-50 text-green-500 rounded-full flex items-center justify-center shadow-inner"><Icon name="check-circle" size={50} /></div>
-                                    <h2 className="text-2xl font-bold text-slate-800">제출 완료!</h2>
-                                    <p className="text-slate-500 text-sm leading-relaxed">수고했어요, {studentInfo.name} 학생.<br/>작성한 모든 답변이 선생님에게 전송되었습니다.<br/>성실한 답변 고마워요!</p>
-                                    <button onClick={() => window.location.reload()} className="px-6 py-2 text-emerald-600 font-semibold text-sm hover:underline mt-4">새로 작성하기</button>
+                            ) : (
+                                <div className="p-8 flex flex-col items-center justify-center h-full space-y-4 animate-fade-in text-center">
+                                    <div className="text-5xl">✨</div>
+                                    <h2 className="text-2xl font-bold text-slate-800">성찰 완료!</h2>
+                                    <p className="text-slate-500 text-sm italic">"{studentInfo.name} 학생의 소중한 기록이 전송되었습니다."</p>
+                                    <button onClick={() => window.location.reload()} className="text-indigo-600 font-bold hover:underline transition-all mt-4">처음으로</button>
                                 </div>
                             )}
                         </div>
