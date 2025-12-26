@@ -11,8 +11,6 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Lucide Icons (as a script for direct usage if needed) -->
-    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700&display=swap');
         body { font-family: 'Pretendard', sans-serif; }
@@ -24,22 +22,35 @@
 <body class="bg-slate-50">
     <div id="app"></div>
 
-    <!-- data-type="module" is critical to allow top-level imports in Babel standalone -->
     <script type="text/babel" data-type="module">
         const { useState, useEffect, useRef } = React;
 
-        // Firebase Imports from CDN
+        // Firebase SDK
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-        // Global environment variables provided by the platform
-        const firebaseConfig = JSON.parse(__firebase_config);
+        // Firebase 설정 (사용자 설정 필요)
+        let firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "YOUR_ID",
+            appId: "YOUR_APP_ID"
+        };
+        
+        // 환경 변수 주입 시 자동 교체
+        if (typeof __firebase_config !== 'undefined') {
+            firebaseConfig = JSON.parse(__firebase_config);
+        }
+
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'bioscience-reflection';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'bioscience-reflection-v1';
 
+        // [고정된 시나리오 데이터] AI 없이 이 데이터만으로 챗봇이 작동합니다.
         const UNIT_DATA = {
             "Ⅰ. 생명과학의 이해": ["생물의 특성", "생명과학의 통합적 특성", "생명과학의 탐구 방법"],
             "Ⅱ. 사람의 물질대사": ["세포의 생명 활동과 에너지", "물질대사와 건강", "기관계의 통합적 작용"],
@@ -55,15 +66,13 @@
             const [isAdmin, setIsAdmin] = useState(false);
             const [showPasswordModal, setShowPasswordModal] = useState(false);
             const [passwordInput, setPasswordInput] = useState('');
-            const [step, setStep] = useState(0);
-            const [currentUnitIdx, setCurrentUnitIdx] = useState(0);
+            const [step, setStep] = useState(0); // 현재 시나리오 단계
+            const [currentRound, setCurrentRound] = useState(0); // 1차 성찰, 2차 성찰 구분
             const [messages, setMessages] = useState([
                 { role: 'bot', text: '반갑습니다! 1년 동안 배운 생명과학Ⅰ 수업 중 가장 인상 깊었던 **2개의 단원**에 대해 성찰해보겠습니다.\n먼저 본인의 **반**을 선택해 주세요.' }
             ]);
             const [formData, setFormData] = useState({
-                classGroup: '',
-                studentId: '',
-                name: '',
+                classGroup: '', studentId: '', name: '',
                 reflections: [
                     { unit: '', subUnit: '', concept: '', effort: '' },
                     { unit: '', subUnit: '', concept: '', effort: '' }
@@ -73,39 +82,23 @@
             const [inputValue, setInputValue] = useState('');
             const chatEndRef = useRef(null);
 
-            // Auth Logic - Strict Rule 3: Auth Before Queries
+            // 초기 인증
             useEffect(() => {
                 const initAuth = async () => {
-                    try {
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await signInWithCustomToken(auth, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
-                    } catch (err) {
-                        console.error("Auth failed:", err);
-                    }
+                    try { await signInAnonymously(auth); } catch (err) { console.error(err); }
                 };
                 initAuth();
                 const unsubscribe = onAuthStateChanged(auth, setUser);
                 return () => unsubscribe();
             }, []);
 
-            // Firestore Sync - Strict Rule 1 & 2
+            // 관리자 모드 시 데이터 감시
             useEffect(() => {
                 if (!user || !isAdmin) return;
-                
-                // Fetching from standard path
-                const reflectionsCol = collection(db, 'artifacts', appId, 'public', 'data', 'reflections');
-                const q = query(reflectionsCol);
-                
-                const unsubscribe = onSnapshot(q, (snapshot) => {
-                    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setAllSubmissions(data);
-                }, (error) => {
-                    console.error("Firestore sync error:", error);
+                const col = collection(db, 'artifacts', appId, 'public', 'data', 'reflections');
+                const unsubscribe = onSnapshot(col, (snapshot) => {
+                    setAllSubmissions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
                 });
-                
                 return () => unsubscribe();
             }, [user, isAdmin]);
 
@@ -113,193 +106,170 @@
                 chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
             }, [messages]);
 
+            // [핵심 로직] AI 없이 "단계(Step)"에 따라 다음 동작을 결정합니다.
             const handleSend = async (textOverride = null) => {
                 const text = textOverride || inputValue;
-                if (!text) return;
+                if (!text || text.trim() === '') return;
 
                 setMessages(prev => [...prev, { role: 'user', text }]);
                 setInputValue('');
 
-                if (step === 0) {
-                    setFormData(prev => ({ ...prev, classGroup: text }));
-                    addBotMessage("성찰을 기록할 **학번 5자리**를 입력해 주세요. (예: 20101)");
-                    setStep(1);
-                } else if (step === 1) {
-                    setFormData(prev => ({ ...prev, studentId: text }));
-                    addBotMessage("본인의 **이름**을 입력해 주세요.");
-                    setStep(2);
-                } else if (step === 2) {
-                    setFormData(prev => ({ ...prev, name: text }));
-                    addBotMessage(`${text} 학생 확인되었습니다.\n먼저 **첫 번째로 성찰할 대단원**을 선택해 주세요.`);
-                    setStep(3);
-                } else if (step === 3) {
-                    const updatedRef = [...formData.reflections];
-                    updatedRef[currentUnitIdx].unit = text;
-                    setFormData(prev => ({ ...prev, reflections: updatedRef }));
-                    addBotMessage(`**${text}** 단원에서 특히 집중했던 **세부 주제**는 무엇인가요?`);
-                    setStep(4);
-                } else if (step === 4) {
-                    const updatedRef = [...formData.reflections];
-                    updatedRef[currentUnitIdx].subUnit = text;
-                    setFormData(prev => ({ ...prev, reflections: updatedRef }));
-                    addBotMessage(`선택하신 **'${text}'** 분야에서 가장 인상 깊게 배운 개념이나 원리, 혹은 새롭게 알게 된 사실을 적어주세요.`);
-                    setStep(5);
-                } else if (step === 5) {
-                    const updatedRef = [...formData.reflections];
-                    updatedRef[currentUnitIdx].concept = text;
-                    setFormData(prev => ({ ...prev, reflections: updatedRef }));
-                    addBotMessage("그 내용을 이해하기 위해 수업 외적으로 어떤 노력을 기울였나요? (심화 도서, 질문, 자료 조사 등)");
-                    setStep(6);
-                } else if (step === 6) {
-                    const updatedRef = [...formData.reflections];
-                    updatedRef[currentUnitIdx].effort = text;
-                    setFormData(prev => ({ ...prev, reflections: updatedRef }));
-
-                    if (currentUnitIdx === 0) {
-                        setCurrentUnitIdx(1);
+                // 시나리오 흐름 제어 (Rule-based Chatbot)
+                switch(step) {
+                    case 0: // 반 선택
+                        setFormData(p => ({ ...p, classGroup: text }));
+                        addBotMessage("성찰을 기록할 **학번 5자리**를 입력해 주세요. (예: 20101)");
+                        setStep(1);
+                        break;
+                    case 1: // 학번 입력
+                        setFormData(p => ({ ...p, studentId: text }));
+                        addBotMessage("본인의 **이름**을 입력해 주세요.");
+                        setStep(2);
+                        break;
+                    case 2: // 이름 입력
+                        setFormData(p => ({ ...p, name: text }));
+                        addBotMessage(`${text} 학생 확인되었습니다.\n성찰할 **대단원**을 선택해 주세요.`);
                         setStep(3);
-                        addBotMessage("첫 번째 단원 성찰이 완료되었습니다!\n이제 **두 번째로 성찰할 대단원**을 선택해 주세요.");
-                    } else {
-                        await submitData();
-                        addBotMessage("모든 성찰이 완료되었습니다! 데이터가 안전하게 전송되었습니다. 수고하셨습니다!");
-                        setStep(7);
-                    }
+                        break;
+                    case 3: // 대단원 선택
+                        updateReflection('unit', text);
+                        addBotMessage(`**${text}**의 **세부 주제**를 선택해 주세요.`);
+                        setStep(4);
+                        break;
+                    case 4: // 중단원 선택
+                        updateReflection('subUnit', text);
+                        addBotMessage(`**'${text}'**에서 가장 인상 깊게 배운 개념이나 원리를 적어주세요.`);
+                        setStep(5);
+                        break;
+                    case 5: // 핵심 개념 입력
+                        updateReflection('concept', text);
+                        addBotMessage("그 내용을 깊이 있게 이해하기 위해 어떤 노력을 했나요? (심화 탐구, 질문 등)");
+                        setStep(6);
+                        break;
+                    case 6: // 노력 사항 입력
+                        updateReflection('effort', text);
+                        if (currentRound === 0) {
+                            setCurrentRound(1);
+                            setStep(3); // 다시 단원 선택 단계로
+                            addBotMessage("첫 번째 성찰이 완료되었습니다!\n이제 **두 번째로 성찰할 단원**을 선택해 주세요.");
+                        } else {
+                            await finalizeSubmission();
+                            addBotMessage("모든 성찰이 완료되었습니다! 수고하셨습니다.");
+                            setStep(7); // 종료
+                        }
+                        break;
                 }
+            };
+
+            const updateReflection = (field, value) => {
+                setFormData(p => {
+                    const newRefs = [...p.reflections];
+                    newRefs[currentRound][field] = value;
+                    return { ...p, reflections: newRefs };
+                });
             };
 
             const addBotMessage = (text) => setMessages(prev => [...prev, { role: 'bot', text }]);
 
-            const submitData = async () => {
+            const finalizeSubmission = async () => {
                 if (!user) return;
                 try {
                     const col = collection(db, 'artifacts', appId, 'public', 'data', 'reflections');
-                    await addDoc(col, { 
-                        ...formData, 
-                        submittedAt: new Date().toISOString(), 
-                        uid: user.uid 
-                    });
-                } catch (e) { 
-                    console.error("Submission failed:", e); 
-                }
+                    await addDoc(col, { ...formData, submittedAt: new Date().toISOString(), uid: user.uid });
+                } catch (e) { console.error(e); }
             };
 
             const downloadCSV = () => {
-                const headers = ["반", "학번", "이름", "단원구분", "대단원", "중단원", "핵심개념", "자기주도노력"];
+                const headers = ["반", "학번", "이름", "차수", "대단원", "중단원", "개념", "노력"];
                 let csv = "\uFEFF" + headers.join(",") + "\n";
                 allSubmissions.forEach(sub => {
                     sub.reflections.forEach((ref, idx) => {
-                        const row = [sub.classGroup, sub.studentId, sub.name, `${idx + 1}차`, ref.unit, ref.subUnit, ref.concept, ref.effort];
+                        const row = [sub.classGroup, sub.studentId, sub.name, `${idx+1}차`, ref.unit, ref.subUnit, ref.concept, ref.effort];
                         csv += row.map(v => `"${(v || '').toString().replace(/"/g, '""')}"`).join(",") + "\n";
                     });
                 });
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
                 const link = document.createElement("a");
                 link.href = URL.createObjectURL(blob);
-                link.download = `생명과학1_성찰_전체결과.csv`;
+                link.download = `생명과학_성찰_결과.csv`;
                 link.click();
             };
 
             return (
-                <div className="min-h-screen p-4 md:p-8">
-                    <div className="max-w-4xl mx-auto space-y-6">
-                        <header className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+                <div className="min-h-screen p-4 md:p-8 flex flex-col items-center bg-slate-50">
+                    <div className="w-full max-w-4xl space-y-4">
+                        <header className="flex justify-between items-center bg-white p-5 rounded-3xl shadow-sm border border-slate-200">
                             <div>
-                                <h1 className="text-2xl font-bold text-emerald-700">생명과학Ⅰ 수업 성찰 시스템</h1>
-                                <p className="text-slate-500 text-sm">강의에서 배운 지식을 나의 역량으로 기록하는 공간입니다.</p>
+                                <h1 className="text-lg font-bold text-emerald-700">생명과학Ⅰ 성찰 시나리오</h1>
+                                <p className="text-slate-400 text-[10px]">AI 없이 정해진 단계에 따라 작동하는 챗봇입니다.</p>
                             </div>
-                            <div className="flex gap-2 mt-4 md:mt-0">
-                                <button 
-                                    onClick={() => isAdmin ? setIsAdmin(false) : setShowPasswordModal(true)} 
-                                    className="px-4 py-2 text-sm bg-slate-100 rounded-xl hover:bg-slate-200 transition-all font-medium"
-                                >
-                                    {isAdmin ? "학생 화면으로" : "관리자 로그인"}
+                            <div className="flex gap-2">
+                                <button onClick={() => isAdmin ? setIsAdmin(false) : setShowPasswordModal(true)} className="px-3 py-1.5 text-xs bg-slate-100 rounded-xl font-semibold text-slate-600">
+                                    {isAdmin ? "학생 모드" : "관리자"}
                                 </button>
-                                {isAdmin && (
-                                    <button 
-                                        onClick={downloadCSV} 
-                                        className="px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 shadow-md transition-all"
-                                    >
-                                        CSV 다운로드
-                                    </button>
-                                )}
+                                {isAdmin && <button onClick={downloadCSV} className="px-3 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-xl shadow-md">CSV 저장</button>}
                             </div>
                         </header>
 
                         {!isAdmin ? (
-                            <div className="bg-white rounded-3xl shadow-xl border border-slate-200 h-[600px] flex flex-col overflow-hidden relative">
-                                <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/50 chat-scroll">
+                            <div className="bg-white rounded-3xl shadow-xl border border-slate-200 h-[70vh] flex flex-col overflow-hidden">
+                                <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/30 chat-scroll">
                                     {messages.map((msg, i) => (
                                         <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                            <div className={`max-w-[85%] px-4 py-3 rounded-2xl shadow-sm text-sm leading-relaxed ${msg.role === 'user' ? 'bg-emerald-700 text-white rounded-tr-none' : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none'}`}>
-                                                {msg.text.split('\n').map((line, j) => <p key={j} className={j > 0 ? 'mt-2' : ''}>{line}</p>)}
+                                            <div className={`max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === 'user' ? 'bg-emerald-600 text-white rounded-tr-none' : 'bg-white text-slate-800 border border-slate-100 rounded-tl-none shadow-sm'}`}>
+                                                {msg.text.split('\n').map((line, j) => <p key={j} className={j > 0 ? 'mt-1' : ''}>{line}</p>)}
                                             </div>
                                         </div>
                                     ))}
                                     <div ref={chatEndRef} />
                                 </div>
 
-                                <div className="px-6 py-2 bg-white flex flex-wrap gap-2 border-t border-slate-50">
-                                    {step === 0 && ["A반", "B반", "C반"].map(v => (
-                                        <button key={v} onClick={() => handleSend(v)} className="px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-sm font-medium hover:bg-emerald-100 transition-all">{v}</button>
-                                    ))}
-                                    {step === 3 && Object.keys(UNIT_DATA).map(v => (
-                                        <button key={v} onClick={() => handleSend(v)} className="px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-sm font-medium hover:bg-blue-100 transition-all">{v}</button>
-                                    ))}
-                                    {step === 4 && UNIT_DATA[formData.reflections[currentUnitIdx].unit]?.map(v => (
-                                        <button key={v} onClick={() => handleSend(v)} className="px-4 py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-sm font-medium hover:bg-amber-100 transition-all">{v}</button>
-                                    ))}
+                                {/* 버튼 선택 영역: AI 대신 선택지를 제공하여 입력을 간소화 */}
+                                <div className="px-6 py-3 bg-white flex flex-wrap gap-2 border-t border-slate-50">
+                                    {step === 0 && ["A반", "B반", "C반"].map(v => <button key={v} onClick={() => handleSend(v)} className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full text-xs font-medium hover:bg-emerald-100 transition-all">{v}</button>)}
+                                    {step === 3 && Object.keys(UNIT_DATA).map(v => <button key={v} onClick={() => handleSend(v)} className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-100 rounded-full text-xs font-medium hover:bg-blue-100 transition-all">{v}</button>)}
+                                    {step === 4 && UNIT_DATA[formData.reflections[currentRound].unit]?.map(v => <button key={v} onClick={() => handleSend(v)} className="px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-100 rounded-full text-xs font-medium hover:bg-amber-100 transition-all">{v}</button>)}
                                 </div>
 
-                                <div className="p-4 bg-white border-t border-slate-100">
-                                    <div className="flex gap-2">
-                                        <input 
-                                            type="text" 
-                                            value={inputValue} 
-                                            onChange={(e) => setInputValue(e.target.value)} 
-                                            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                                            placeholder={step >= 7 ? "제출 완료되었습니다." : "메시지를 입력하세요..."}
-                                            disabled={step >= 7}
-                                            className="flex-1 px-4 py-3 bg-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
-                                        />
-                                        <button 
-                                            onClick={() => handleSend()} 
-                                            disabled={step >= 7} 
-                                            className="px-6 py-3 bg-emerald-700 text-white rounded-2xl hover:bg-emerald-800 transition-all disabled:bg-slate-300 font-bold"
-                                        >
-                                            전송
-                                        </button>
-                                    </div>
+                                <div className="p-4 bg-white border-t border-slate-100 flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        value={inputValue} 
+                                        onChange={(e) => setInputValue(e.target.value)} 
+                                        onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                                        placeholder={step >= 7 ? "성찰이 종료되었습니다." : "직접 입력도 가능합니다..."}
+                                        disabled={step >= 7}
+                                        className="flex-1 px-4 py-3 bg-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                                    />
+                                    <button onClick={() => handleSend()} disabled={step >= 7} className="px-5 py-3 bg-emerald-700 text-white rounded-2xl font-bold text-sm">전송</button>
                                 </div>
                             </div>
                         ) : (
                             <div className="bg-white rounded-3xl shadow-xl border border-slate-200 p-6 overflow-hidden">
-                                <h2 className="text-xl font-bold mb-4 text-slate-800">실시간 제출 현황 ({allSubmissions.length}명)</h2>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm text-left">
-                                        <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
+                                <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+                                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                                    제출 현황 ({allSubmissions.length}명)
+                                </h2>
+                                <div className="overflow-x-auto max-h-[55vh] overflow-y-auto chat-scroll">
+                                    <table className="w-full text-sm text-left border-collapse">
+                                        <thead className="bg-slate-50 sticky top-0 z-10">
                                             <tr>
-                                                <th className="px-4 py-3 font-semibold">반/학번</th>
-                                                <th className="px-4 py-3 font-semibold">이름</th>
-                                                <th className="px-4 py-3 font-semibold">주제 (1/2차)</th>
-                                                <th className="px-4 py-3 font-semibold">제출시각</th>
+                                                <th className="px-4 py-3 font-semibold text-xs text-slate-500 border-b">학생 정보</th>
+                                                <th className="px-4 py-3 font-semibold text-xs text-slate-500 border-b">1차 성찰 주제</th>
+                                                <th className="px-4 py-3 font-semibold text-xs text-slate-500 border-b">2차 성찰 주제</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
                                             {allSubmissions.map(sub => (
                                                 <tr key={sub.id} className="hover:bg-slate-50 transition-colors">
-                                                    <td className="px-4 py-3 font-bold text-slate-700">{sub.classGroup} / {sub.studentId}</td>
-                                                    <td className="px-4 py-3 font-medium">{sub.name}</td>
-                                                    <td className="px-4 py-3 text-slate-500 text-xs">
-                                                        {sub.reflections[0]?.subUnit || '-'} / {sub.reflections[1]?.subUnit || '-'}
+                                                    <td className="px-4 py-3">
+                                                        <div className="font-bold text-slate-700">{sub.name}</div>
+                                                        <div className="text-[10px] text-slate-400">{sub.classGroup} / {sub.studentId}</div>
                                                     </td>
-                                                    <td className="px-4 py-3 text-slate-400 text-[10px]">{new Date(sub.submittedAt).toLocaleString()}</td>
+                                                    <td className="px-4 py-3 text-xs text-slate-600">{sub.reflections[0]?.subUnit || '-'}</td>
+                                                    <td className="px-4 py-3 text-xs text-slate-600">{sub.reflections[1]?.subUnit || '-'}</td>
                                                 </tr>
                                             ))}
-                                            {allSubmissions.length === 0 && (
-                                                <tr>
-                                                    <td colSpan="4" className="px-4 py-10 text-center text-slate-400 italic">아직 제출된 데이터가 없습니다.</td>
-                                                </tr>
-                                            )}
                                         </tbody>
                                     </table>
                                 </div>
@@ -308,24 +278,21 @@
 
                         {showPasswordModal && (
                             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                                <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-slate-200">
-                                    <h3 className="text-lg font-bold mb-2 text-slate-800">관리자 인증</h3>
-                                    <p className="text-xs text-slate-500 mb-4 text-center">보안을 위해 비밀번호를 입력해 주세요.</p>
+                                <div className="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl">
+                                    <h3 className="text-xl font-bold mb-2 text-center text-slate-800">관리자 로그인</h3>
+                                    <p className="text-xs text-slate-400 mb-6 text-center">비밀번호를 입력하세요.</p>
                                     <input 
                                         type="password" 
                                         value={passwordInput} 
                                         onChange={(e) => setPasswordInput(e.target.value)}
                                         onKeyPress={(e) => e.key === 'Enter' && (passwordInput === ADMIN_PASSWORD ? (setIsAdmin(true), setShowPasswordModal(false), setPasswordInput('')) : alert('틀림'))}
-                                        className="w-full p-4 bg-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 mb-4 text-center tracking-[0.5em] text-xl font-bold"
+                                        className="w-full p-4 bg-slate-100 rounded-2xl focus:ring-2 focus:ring-emerald-500 mb-4 text-center tracking-[0.5em] text-xl font-bold"
                                         autoFocus
                                     />
-                                    <button 
-                                        onClick={() => passwordInput === ADMIN_PASSWORD ? (setIsAdmin(true), setShowPasswordModal(false), setPasswordInput('')) : alert('틀림')} 
-                                        className="w-full bg-emerald-700 text-white py-3 rounded-xl font-bold hover:bg-emerald-800 transition-all"
-                                    >
-                                        인증 완료
-                                    </button>
-                                    <button onClick={() => setShowPasswordModal(false)} className="w-full mt-2 py-2 text-slate-400 text-sm hover:text-slate-600">취소</button>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setShowPasswordModal(false)} className="flex-1 py-3 text-slate-400 font-medium">취소</button>
+                                        <button onClick={() => passwordInput === ADMIN_PASSWORD ? (setIsAdmin(true), setShowPasswordModal(false), setPasswordInput('')) : alert('틀림')} className="flex-1 bg-emerald-700 text-white py-3 rounded-2xl font-bold">확인</button>
+                                    </div>
                                 </div>
                             </div>
                         )}
