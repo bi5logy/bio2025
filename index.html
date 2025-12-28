@@ -4,18 +4,15 @@
   <meta charset="UTF-8" />
   <title>생명과학 I 성찰 기록장</title>
 
-  <!-- Tailwind CDN -->
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <!-- React & ReactDOM -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 
-  <!-- Babel (JSX 변환) -->
+  <!-- Babel -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 
 <body class="bg-slate-50">
@@ -23,13 +20,12 @@
 
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
-    const { ClipboardList, GraduationCap, Send } = lucideReact;
 
-    // ✅ 선생님 Apps Script 웹앱 URL (이미 삽입 완료)
+    // ✅ Apps Script 웹앱 URL (삽입 완료)
     const GOOGLE_SHEET_URL =
       "https://script.google.com/macros/s/AKfycbxiz58QHknpCandE9FehxsCUTI94hQdAKYq3glZQwpQkYdE0bTL2QIIc0l5y1QNCgP-/exec";
 
-    // ✅ Google Sheet로 보내는 함수
+    // ✅ Google Sheet 전송 함수
     function sendToSheet(data) {
       fetch(GOOGLE_SHEET_URL, {
         method: "POST",
@@ -47,7 +43,7 @@
         studentId: "",
         classGroup: "A"
       });
-      const [chatHistory, setChatHistory] = useState([]);
+      const [messages, setMessages] = useState([]);
       const [inputText, setInputText] = useState("");
       const scrollRef = useRef(null);
 
@@ -55,27 +51,23 @@
         if (scrollRef.current) {
           scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
-      }, [chatHistory]);
-
-      const addBot = text =>
-        setChatHistory(prev => [...prev, { role: "bot", text }]);
+      }, [messages]);
 
       return (
         <div className="min-h-screen flex items-center justify-center p-4">
           <div className="w-full max-w-xl bg-white rounded-3xl shadow-xl h-[90vh] flex flex-col">
 
             {/* Header */}
-            <div className="bg-emerald-600 p-4 text-white font-bold flex items-center gap-2">
-              <ClipboardList />
-              생명과학 I 성찰 기록장
+            <div className="bg-emerald-600 p-4 text-white font-bold text-center">
+              📘 생명과학 I 성찰 기록장
             </div>
 
             {/* 학생 정보 입력 */}
             {step === "info" && (
-              <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6 text-center">
-                <GraduationCap size={48} className="text-emerald-600" />
+              <div className="flex-1 flex flex-col justify-center gap-4 p-6 text-center">
+                <div className="text-4xl">🎓</div>
                 <input
-                  className="border p-3 rounded-xl w-full"
+                  className="border p-3 rounded-xl"
                   placeholder="학번"
                   value={studentInfo.studentId}
                   onChange={e =>
@@ -83,7 +75,7 @@
                   }
                 />
                 <input
-                  className="border p-3 rounded-xl w-full"
+                  className="border p-3 rounded-xl"
                   placeholder="이름"
                   value={studentInfo.name}
                   onChange={e =>
@@ -91,10 +83,10 @@
                   }
                 />
                 <button
-                  className="bg-emerald-600 text-white px-6 py-3 rounded-xl"
+                  className="bg-emerald-600 text-white py-3 rounded-xl"
                   onClick={() => setStep("chat")}
                 >
-                  시작하기
+                  성찰 시작하기
                 </button>
               </div>
             )}
@@ -106,7 +98,7 @@
                   ref={scrollRef}
                   className="flex-1 overflow-y-auto p-4 space-y-3"
                 >
-                  {chatHistory.map((m, i) => (
+                  {messages.map((m, i) => (
                     <div
                       key={i}
                       className={m.role === "bot" ? "text-left" : "text-right"}
@@ -128,16 +120,16 @@
                 <div className="p-3 border-t flex gap-2">
                   <textarea
                     className="flex-1 border rounded-xl p-2"
-                    placeholder="수업에서 기억에 남는 점을 적어보세요"
+                    placeholder="수업에서 인상 깊었던 점을 적어보세요"
                     value={inputText}
                     onChange={e => setInputText(e.target.value)}
                   />
                   <button
-                    className="bg-emerald-600 text-white p-3 rounded-xl"
+                    className="bg-emerald-600 text-white px-4 rounded-xl"
                     onClick={() => {
                       if (!inputText.trim()) return;
 
-                      // ✅ 실제 Google Sheet 저장
+                      // Google Sheet 저장
                       sendToSheet({
                         classGroup: studentInfo.classGroup,
                         studentId: studentInfo.studentId,
@@ -148,11 +140,16 @@
                         content: inputText
                       });
 
-                      addBot("답변이 저장되었습니다 😊");
+                      setMessages(prev => [
+                        ...prev,
+                        { role: "user", text: inputText },
+                        { role: "bot", text: "답변이 저장되었습니다 😊" }
+                      ]);
+
                       setInputText("");
                     }}
                   >
-                    <Send />
+                    전송
                   </button>
                 </div>
               </>
