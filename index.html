@@ -24,6 +24,9 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
+        // --- 설정: 여기에 배포된 구글 웹 앱 URL을 넣으세요 ---
+        const GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbx6yZarmm_URniCyL1kaillFim-0NTSy5fWJRpmMG4MoBtrwYvU_khM38jlsxpQg4rf/exec"; 
+
         // SVG 아이콘 컴포넌트
         const Icons = {
             ClipboardList: () => (
@@ -48,8 +51,6 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
             )
         };
-
-        const GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbzNZBKTe_T4-XOyAbd9WK4oVOQe3dCp5RDbujFzqUc8oTesWRjRWBs6gyM2BtNVUyme/exec"; 
 
         const ACHIEVEMENT_STANDARDS = {
             "1. 생명과학의 이해": ["생물의 특성과 생물/비생물의 차이", "생명과학의 통합적 특성과 타 학문 연계", "귀납적 탐구와 연역적 탐구 방법 비교"],
@@ -128,12 +129,14 @@
 
                 if (isFinalQuestion) {
                     setIsSubmitting(true);
-                    const success = await saveToSheet([...chatHistory, { role: 'user', text: userText }]);
+                    const finalFullHistory = [...chatHistory, { role: 'user', text: userText }];
+                    const success = await saveToSheet(finalFullHistory);
+                    
                     if (success) {
                         addBotMessage("정말 성실하게 답변해 주었네요. 고생 많았습니다! 작성한 내용을 안전하게 제출했어요.");
                         setStep('completed');
                     } else {
-                        addBotMessage("서버 전송에 문제가 발생했습니다. 선생님께 문의해 주세요.");
+                        alert("서버 전송에 문제가 발생했습니다. 선생님께 문의해 주세요.");
                         setIsSubmitting(false);
                     }
                     return;
@@ -159,19 +162,30 @@
                 }
             };
 
+            // 수정된 구글 시트 저장 함수
             const saveToSheet = async (finalHistory) => {
                 const conversation = finalHistory.map(m => `${m.role === 'bot' ? '질문' : '답변'}: ${m.text}`).join('\n\n');
-                const formData = new URLSearchParams();
-                formData.append('class', studentInfo.classGroup);
-                formData.append('studentId', studentInfo.studentId);
-                formData.append('name', studentInfo.name);
-                formData.append('selectedTopics', Object.entries(selectedSubContents).map(([u, s]) => `${u}: ${s}`).join(', '));
-                formData.append('content', conversation);
-                formData.append('date', new Date().toLocaleString('ko-KR'));
+                const params = new URLSearchParams();
+                params.append('class', studentInfo.classGroup);
+                params.append('studentId', studentInfo.studentId);
+                params.append('name', studentInfo.name);
+                params.append('selectedTopics', Object.entries(selectedSubContents).map(([u, s]) => `${u}: ${s}`).join(', '));
+                params.append('content', conversation);
+                params.append('date', new Date().toLocaleString('ko-KR'));
+
                 try {
-                    await fetch(GOOGLE_SHEET_URL, { method: 'POST', mode: 'no-cors', body: formData.toString() });
-                    return true;
-                } catch (e) { return false; }
+                    // 구글 앱스 스크립트로 데이터 전송 (no-cors 모드)
+                    await fetch(GOOGLE_SHEET_URL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: params.toString()
+                    });
+                    return true; 
+                } catch (e) {
+                    console.error("전송 에러:", e);
+                    return false;
+                }
             };
 
             return (
@@ -260,8 +274,12 @@
                                         ))}
                                     </div>
                                     <div className="p-4 bg-white border-t border-slate-100 flex gap-2 items-end shrink-0">
-                                        <textarea rows="2" disabled={isSubmitting} className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-sm outline-none focus:border-emerald-500 transition-all resize-none disabled:opacity-50" placeholder="메시지를 입력하세요..." value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} />
-                                        <button onClick={handleSendMessage} disabled={!inputText.trim() || isSubmitting} className="bg-emerald-600 text-white p-3.5 rounded-2xl shadow-lg disabled:bg-slate-200 active:scale-95 transition-all"><Icons.Send /></button>
+                                        <textarea rows="2" disabled={isSubmitting} className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-sm outline-none focus:border-emerald-500 transition-all resize-none disabled:opacity-50" placeholder={isSubmitting ? "제출 중입니다..." : "메시지를 입력하세요..."} value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} />
+                                        <button onClick={handleSendMessage} disabled={!inputText.trim() || isSubmitting} className="bg-emerald-600 text-white p-3.5 rounded-2xl shadow-lg disabled:bg-slate-200 active:scale-95 transition-all">
+                                            {isSubmitting ? (
+                                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                            ) : <Icons.Send />}
+                                        </button>
                                     </div>
                                 </>
                             )}
